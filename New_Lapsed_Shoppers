@@ -1,0 +1,153 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# UK Yocuda New-Lapsed Shopper Analysis"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Importing yocuda data from GCS"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "from pyspark.sql.functions import *"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "data = (spark.read.format(\"csv\").option(\"header\", \"true\").option(\"inferSchema\", \"true\").load(\"gs://ds-mlengine/praneeth/2017_Yocuda_Dummy_Data_V01_20180129.csv\"))\\\n",
+    "       .filter((to_date(col(\"timestamp\"))>'2016-11-30') & (to_date(col(\"timestamp\"))<'2017-12-01'))\\\n",
+    "  .selectExpr(\"identifier\",\"to_date(timestamp) as date\").distinct()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "from pyspark.sql.window import Window"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Assigning row number"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+----------+----------+----------+-------+\n",
+      "|identifier|      date|     date2|row_num|\n",
+      "+----------+----------+----------+-------+\n",
+      "| ryd@c.com|2017-08-04|2017-03-31|      1|\n",
+      "| yyj@c.com|2017-02-11|2017-01-11|      1|\n",
+      "| bri@b.com|2017-05-24|2017-01-27|      1|\n",
+      "| bwe@b.com|2017-07-26|2017-07-19|      1|\n",
+      "| iov@c.com|2017-04-28|2017-01-24|      1|\n",
+      "+----------+----------+----------+-------+\n",
+      "only showing top 5 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "df1=data.withColumn(\"date2\",lead(data[\"date\"]).over(Window.partitionBy(\"identifier\")\\\n",
+    "                                                                   .orderBy(desc(\"date\"))))\\\n",
+    "        .withColumn(\"row_num\",row_number().over(Window.partitionBy(\"identifier\")\\\n",
+    "                                                                  .orderBy(desc(\"date\"))))\n",
+    "df2=df1.filter(col(\"row_num\")==1)\n",
+    "df2.filter(col(\"date2\").isNotNull()).show(5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Segmentation"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+----------+----------+-----+-------+---------------+\n",
+      "|identifier|      date|date2|row_num|Type of shopper|\n",
+      "+----------+----------+-----+-------+---------------+\n",
+      "| ajb@b.com|2016-12-13| null|      1|    New Shopper|\n",
+      "| bee@f.com|2017-01-05| null|      1|    New Shopper|\n",
+      "| bnx@a.com|2017-02-02| null|      1|    New Shopper|\n",
+      "| buv@e.com|2017-10-01| null|      1|    New Shopper|\n",
+      "| cce@a.com|2017-10-27| null|      1|    New Shopper|\n",
+      "+----------+----------+-----+-------+---------------+\n",
+      "only showing top 5 rows\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "df=df2.withColumn(\"Type of shopper\",when(datediff(col(\"date\"),col(\"date2\"))>180,\"Lapsed Shopper\") \\\n",
+    "                                   .when((col(\"date2\").isNull()) | (datediff(col(\"date\"),col(\"date2\"))<=180),\"New Shopper\"))\n",
+    "df.show(5)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 2",
+   "language": "python",
+   "name": "python2"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 2
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython2",
+   "version": "2.7.12"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
